@@ -1,0 +1,195 @@
+#!/usr/bin/php -d memory_limit=2048M -d post_max_size=0
+<?php
+
+use Neo\Core\App\Modules\DB\DB;
+use Neo\Core\App\Modules\Router\Router;
+use Neo\Core\App\Modules\Yaml\YAML;
+use Neo\Core\App\Neo;
+
+require_once 'vendor/autoload.php';
+
+// https://misc.flogisoft.com/bash/tip_colors_and_formatting
+
+/**
+ * make:theme name (create folders and copying neo console here)
+ * make:plugin name
+ * sql:table name (create sql file with timestamps)
+ * sql:migrate
+ */
+
+if (!isset($argv[1]) || isset($argv[1]) && $argv[1] === 'help') {
+    formatPrintLn(['magentabg', 'bold', 'italic'], '> NEO CMD v0.1');
+    formatPrintLn(['greenbg', 'bold'], 'Database');
+    formatPrint(['bold'], '   sql:make');
+    formatPrintLn([], ' ---------- create SQL file in theme folder');
+    formatPrint(['bold'], '   sql:migrate');
+    formatPrintLn([], ' ------- migrate modules and theme');
+    formatPrint(['bold'], '   sql:drop');
+    formatPrintLn([], ' ---------- drop table from current database');
+    formatPrint(['bold'], '   sql:exec');
+    formatPrintLn([], ' ---------- execute SQL query into db');
+    formatPrintLn(['greenbg', 'bold'], 'Composer');
+    formatPrint(['bold'], '   dump');
+    formatPrintLn([], ' -------------- rebuild psr-4 autoload');
+    die;
+}
+
+if ($argv[1] === 'dump') {
+    shell_exec('composer dump-autoload -o');
+    formatPrint(['green', 'bold'], '[Success]');
+    formatPrintLn([], ' Composer autoload was rebuild.');
+    die;
+}
+
+[$chapter, $action] = explode(':', $argv[1]);
+
+$providers = include abspath('/providers.php');
+
+$neo = new Neo();
+$neo['modules']['router'] = new Router();
+$neo['providers'] = $providers;
+
+
+$themeFolder = 'themes/' . env('THEME_ACTIVE');
+
+if ($chapter === 'sql')
+{
+    DB::setup();
+
+    switch ($action) {
+        case 'drop': {
+            if (!isset($argv[2])) {
+                formatPrint(['red', 'bold'], '[Whoops]');
+                formatPrint([], ' Homie, enter ');
+                formatPrintLn(['green', 'bold', 'italic'], 'sql:drop table_name');
+                exit;
+            }
+
+            DB::query('drop table ?;', [$argv[2]]);
+
+            formatPrint(['green', 'bold'], '[Success]');
+            formatPrintLn([], ' Table ' . $argv[2] . ' was dropped');
+
+            break;
+        }
+        case 'make': {
+            if (!isset($argv[2])) {
+                formatPrint(['red', 'bold'], '[Whoops]');
+                formatPrint([], ' Homie, enter ');
+                formatPrintLn(['green', 'bold', 'italic'], 'sql:make table_name');
+                exit;
+            }
+
+            $currentDate = date('Y-m-d-Hm', time());
+            $tableName = $currentDate . '_create_' . $argv[2] . '_table';
+
+            if(!isset($argv[3])) {
+                file_put_contents($themeFolder . '/sql/' . $tableName . '.sql', "create table if not exists $argv[2] (
+    id int auto_increment primary key
+)
+ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_general_ci;");
+
+                formatPrint(['yellow'], $themeFolder . '/sql/' . $tableName . '.sql ');
+                formatPrintLn(['bold', 'green'], '[Done]');
+            }
+
+            break;
+        }
+        case 'migrate': {
+            formatPrintLn(['magentabg'], 'Starting modules migration...');
+
+            $modulesFolder = scandir('core/app/modules/');
+
+            foreach ($modulesFolder as $module) {
+                $sqlFolder = 'core/app/modules/' . $module . '/sql/';
+
+                if (!file_exists($sqlFolder)) {
+                    continue;
+                }
+
+                $migrations = scandir($sqlFolder);
+
+                migrate($migrations, $sqlFolder);
+            }
+
+            formatPrintLn(['green'], 'Modules migration complete.');
+            formatPrintLn();
+
+            formatPrintLn(['magentabg'], 'Starting plugins migration...');
+
+            $pluginsFolder = scandir('plugins/');
+
+            foreach ($pluginsFolder as $plugin) {
+                $sqlFolder = 'plugins/' . $plugin . '/sql/';
+
+                if (!file_exists($sqlFolder)) {
+                    continue;
+                }
+
+                $migrations = scandir($sqlFolder);
+
+                migrate($migrations, $sqlFolder);
+            }
+
+            formatPrintLn(['green'], 'Plugins migration complete.');
+            formatPrintLn();
+
+            $sqlFolder = $themeFolder . '/sql/';
+            $migrations = scandir($sqlFolder);
+
+            formatPrintLn(['magentabg'], 'Starting theme migration...');
+            migrate($migrations, $sqlFolder);
+            formatPrintLn(['green'], 'Theme migration complete.');
+
+            break;
+        }
+        case 'exec': {
+            if (!isset($argv[2])) {
+                formatPrint(['red', 'bold'], '[Whoops]');
+                formatPrint([], ' Homie, enter ');
+                formatPrintLn(['green', 'bold', 'italic'], 'sql:execute "query"');
+                exit;
+            }
+
+            $result = DB::query($argv[2])->toArray();
+            dd($result);
+
+            break;
+        }
+    }
+}
+
+function migrate(array $files, string $sqlFolder)
+{
+    unset($files[0]);
+    unset($files[1]);
+
+    foreach ($files as $migration) {
+
+        if (!file_exists($sqlFolder . $migration)) {
+            continue;
+        }
+
+        $sql = file_get_contents($sqlFolder . $migration);
+
+        \Neo\Core\App\Modules\DB\DB::query($sql);
+
+        formatPrint(['yellow'], $migration . ' ');
+        formatPrintLn(['green', 'bold','strikethrough'], "[Done]");
+    }
+}
+
+function formatPrint(array $format=[],string $text = '') {
+    $codes=[
+        'bold'=>1, 'italic'=>3, 'underline'=>4, 'strikethrough'=>9,
+        'black'=>30, 'red'=>31, 'green'=>32, 'yellow'=>33,'blue'=>34, 'magenta'=>35, 'cyan'=>36, 'white'=>37,
+        'blackbg'=>40, 'redbg'=>41, 'greenbg'=>42, 'yellowbg'=>44,'bluebg'=>44, 'magentabg'=>45, 'cyanbg'=>46, 'lightgreybg'=>47
+    ];
+    $formatMap = array_map(function ($v) use ($codes) { return $codes[$v]; }, $format);
+    echo "\e[".implode(';',$formatMap).'m'.$text."\e[0m";
+}
+function formatPrintLn(array $format=[], string $text='') {
+    formatPrint($format, $text); echo "\r\n";
+}

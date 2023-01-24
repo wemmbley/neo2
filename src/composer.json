@@ -1,0 +1,20 @@
+{
+    "name": "neo/neo",
+    "autoload": {
+        "psr-4": {
+            "Neo\\Core\\": "core/",
+            "Neo\\Plugins\\": "plugins/",
+            "Neo\\Themes\\Woundy\\App\\": "themes/woundy/app"
+        },
+        "files": ["defines.php"]
+    },
+    "authors": [
+        {
+            "name": "Rustam Holiev",
+            "email": "golevv.rustam@gmail.com"
+        }
+    ],
+    "require-dev": {
+        "larapack/dd": "^1.1"
+    }
+}
